@@ -1,0 +1,57 @@
+{
+  "model_version": "v1.0.0-hgb",
+  "feature_version": "v1.0",
+  "algorithm": "HistGradientBoostingRegressor",
+  "loss_function": "absolute_error",
+  "trained_at": "2026-09-20T08:44:10.848128+00:00",
+  "dataset_label": "DEMO / SYNTHETIC DATA",
+  "is_synthetic_training_data": true,
+  "training_samples": 1200,
+  "validation_samples": 300,
+  "feature_names": [
+    "day_of_week",
+    "hour_of_day",
+    "minute_of_hour",
+    "priority_code",
+    "patients_ahead",
+    "rolling_recent_duration_median",
+    "historical_doctor_duration_median",
+    "historical_dept_duration_median",
+    "session_elapsed_minutes",
+    "completed_in_session_count",
+    "has_emergency_ahead"
+  ],
+  "metrics": {
+    "baseline": {
+      "mae_seconds": 83.06,
+      "mae_minutes": 1.38,
+      "rmse_seconds": 104.54,
+      "rmse_minutes": 1.74,
+      "median_absolute_error_seconds": 71.0,
+      "median_absolute_error_minutes": 1.18,
+      "p50_error_seconds": 71.0,
+      "p90_error_seconds": 164.0,
+      "p90_error_minutes": 2.73
+    },
+    "ml": {
+      "mae_seconds": 9.49,
+      "mae_minutes": 0.16,
+      "rmse_seconds": 15.35,
+      "rmse_minutes": 0.26,
+      "median_absolute_error_seconds": 5.79,
+      "median_absolute_error_minutes": 0.1,
+      "p50_error_seconds": 5.79,
+      "p90_error_seconds": 20.31,
+      "p90_error_minutes": 0.34
+    }
+  },
+  "comparison": {
+    "mae_reduction_seconds": 73.57,
+    "mae_improvement_percent": 88.57,
+    "ml_better_than_baseline": true
+  },
+  "safety_bounds": {
+    "min_duration_seconds": 60,
+    "max_duration_seconds": 7200
+  }
+}

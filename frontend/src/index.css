@@ -1,0 +1,112 @@
+@import "tailwindcss";
+
+:root {
+  /* Brand & Healthcare Primary */
+  --q-primary: #1e3a8a; /* Deep healthcare navy */
+  --q-primary-dark: #0f172a;
+  --q-primary-light: #2563eb;
+  --q-primary-surface: #eff6ff;
+
+  /* Flow Accent */
+  --q-accent: #0284c7;
+  --q-accent-surface: #f0f9ff;
+
+  /* Semantic Status Colors */
+  --q-success: #059669; /* Calm healthcare emerald */
+  --q-success-surface: #ecfdf5;
+  --q-warning: #d97706; /* Warm amber */
+  --q-warning-surface: #fffbeb;
+  --q-danger: #dc2626; /* Controlled coral red */
+  --q-danger-surface: #fef2f2;
+
+  /* Background & Surfaces */
+  --q-surface: #f8fafc; /* Crisp cool neutral */
+  --q-surface-card: #ffffff;
+  --q-surface-subtle: #f1f5f9;
+  --q-border: #e2e8f0;
+  --q-border-subtle: #f1f5f9;
+
+  /* Typography Colors */
+  --q-text-primary: #0f172a;
+  --q-text-secondary: #475569;
+  --q-text-muted: #94a3b8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background-color: var(--q-surface);
+  color: var(--q-text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  line-height: 1.5;
+}
+
+/* Micro-interactions */
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulseSubtle {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.75;
+    transform: scale(1.05);
+  }
+}
+
+.animate-fade-up {
+  animation: fadeUp 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-pulse-subtle {
+  animation: pulseSubtle 2.5s ease-in-out infinite;
+}
+
+/* Standardized elevation cards */
+.q-card {
+  background: #ffffff;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 1.25rem; /* 20px */
+  box-shadow: 0 1px 3px 0 rgb(15 23 42 / 0.04), 0 1px 2px -1px rgb(15 23 42 / 0.02);
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.q-card-interactive {
+  background: #ffffff;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 1.25rem;
+  box-shadow: 0 1px 3px 0 rgb(15 23 42 / 0.04);
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: pointer;
+}
+
+.q-card-interactive:hover {
+  border-color: rgba(147, 197, 253, 0.8);
+  box-shadow: 0 6px 16px -4px rgb(15 23 42 / 0.08), 0 2px 6px -2px rgb(15 23 42 / 0.04);
+  transform: translateY(-1px);
+}
+
+/* Touch targets */
+.q-touch-target {
+  min-height: 44px;
+}
