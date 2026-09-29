@@ -25,6 +25,14 @@ async def lifespan(app: FastAPI):
     db_ok = check_database_health()
     if db_ok:
         logger.info("[Q-FLOW Startup] Connected to PostgreSQL successfully.")
+        try:
+            from app.core.database import SessionLocal
+            from app.services.seed_service import seed_demo_data
+            with SessionLocal() as db:
+                seed_demo_data(db)
+            logger.info("[Q-FLOW Startup] Idempotent demo database seeding verified.")
+        except Exception as e:
+            logger.exception("[Q-FLOW Startup] Seeding check failed: %s", e)
     else:
         logger.warning("[Q-FLOW Startup Warning] Could not connect to PostgreSQL. Please check DATABASE_URL.")
     yield
@@ -46,10 +54,11 @@ app = FastAPI(
 )
 
 # CORS Middleware configuration
-cors_origins = settings.CORS_ORIGINS if settings.is_production else ["*"]
+cors_origins = settings.CORS_ORIGINS if (settings.is_production and settings.CORS_ORIGINS != ["*"]) else ["*"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
+    allow_origin_regex=r"https://.*\.onrender\.com" if settings.is_production else None,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

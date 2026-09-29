@@ -132,9 +132,13 @@ def make_test_user(db_session, name: str, email: str, role: UserRole, hospital_i
     from app.core.security import hash_password, create_access_token
     if role == UserRole.STAFF and not hospital_id:
         from app.models.hospital import Hospital
-        first_hosp = db_session.query(Hospital).first()
-        if first_hosp:
-            hospital_id = first_hosp.id
+        test_hosp = db_session.query(Hospital).filter(Hospital.name == "Test Central Hospital").first()
+        if test_hosp:
+            hospital_id = test_hosp.id
+        else:
+            first_hosp = db_session.query(Hospital).first()
+            if first_hosp:
+                hospital_id = first_hosp.id
 
     existing = db_session.query(User).filter(User.email == email).first()
     if existing:

@@ -6,7 +6,15 @@
 import axios, { AxiosError } from 'axios';
 import type { ApiError } from '../types/api';
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
+const isLocalhost =
+  typeof window !== 'undefined' &&
+  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+const DEFAULT_BACKEND_URL = isLocalhost
+  ? 'http://localhost:8000'
+  : 'https://q-flow-1.onrender.com';
+
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || DEFAULT_BACKEND_URL;
 
 export const apiClient = axios.create({
   baseURL: `${BASE_URL}/api/v1`,
