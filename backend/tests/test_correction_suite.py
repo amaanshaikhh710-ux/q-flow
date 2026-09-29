@@ -22,7 +22,7 @@ TEST 18: Google Maps API failure does not create fake travel time.
 
 import uuid
 import pytest
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, time
 
 from app.models.user import User, UserRole
 from app.models.hospital import Hospital
@@ -87,6 +87,7 @@ def test_1_staff_then_patient_booking_sequence(db_session, seed_opd_data):
         db_session,
         queue_id=queue.id,
         patient_user_id=patient_user.id,
+        appointment_time=time(11, 0),
     )
     assert patient_entry.token_number == 2
     assert patient_entry.status == QueueEntryStatus.BOOKED
@@ -261,7 +262,12 @@ def test_8_patient_arrival_changes_state(db_session, seed_opd_data):
     queue = seed_opd_data["queue"]
     patient, _ = make_user_with_token(db_session, "Patient Arrive", "parrive@test.com", UserRole.PATIENT)
     staff_user, _ = make_user_with_token(db_session, "Staff Arrive", "sarrive@hosp.com", UserRole.STAFF, seed_opd_data["hospital"].id)
-    entry = QueueEngineService.join_queue(db_session, queue_id=queue.id, patient_user_id=patient.id)
+    entry = QueueEngineService.join_queue(
+        db_session,
+        queue_id=queue.id,
+        patient_user_id=patient.id,
+        appointment_time=time(10, 0),
+    )
     assert entry.status == QueueEntryStatus.BOOKED
     assert entry.arrived_at is None
 

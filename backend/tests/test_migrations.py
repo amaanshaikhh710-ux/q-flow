@@ -17,12 +17,20 @@ def test_migration_head_revision():
 
 
 def test_database_current_matches_head():
-    """Verify that PostgreSQL database is migrated to the latest Alembic revision."""
+    """Verify that database is migrated to the latest Alembic revision."""
     alembic_cfg = Config("alembic.ini")
     script = ScriptDirectory.from_config(alembic_cfg)
     head_rev = script.get_current_head()
 
-    with engine.connect() as conn:
-        from sqlalchemy import text
+    from sqlalchemy import create_engine, text
+    db_url = settings.DATABASE_URL
+    if db_url.startswith("postgres://"):
+        db_url = db_url.replace("postgres://", "postgresql://", 1)
+
+    target_engine = create_engine(db_url)
+    alembic_cfg.set_main_option("sqlalchemy.url", db_url.replace("%", "%%"))
+    command.upgrade(alembic_cfg, "head")
+
+    with target_engine.connect() as conn:
         result = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
         assert result == head_rev

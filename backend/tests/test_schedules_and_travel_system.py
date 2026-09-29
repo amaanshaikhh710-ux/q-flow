@@ -24,6 +24,8 @@ from app.core.security import create_access_token
 
 @pytest.fixture
 def db_session():
+    from app.core.database import Base, engine
+    Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
         yield db

@@ -1,16 +1,17 @@
 """retain schedule and selected time on queue appointments
 
 Revision ID: 5d99af77c0d1
-Revises: 347d1479409f
+Revises: 4f88e1a7b29c
 """
 
+from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
-revision = "5d99af77c0d1"
-down_revision = "347d1479409f"
-branch_labels = None
-depends_on = None
+revision: str = "5d99af77c0d1"
+down_revision: Union[str, Sequence[str], None] = "4f88e1a7b29c"
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:

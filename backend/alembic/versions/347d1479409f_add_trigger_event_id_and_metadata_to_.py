@@ -24,7 +24,7 @@ def upgrade() -> None:
     op.add_column('notifications', sa.Column('trigger_event_id', sa.Uuid(), nullable=True))
     op.add_column('notifications', sa.Column('title', sa.String(length=255), nullable=True))
     op.add_column('notifications', sa.Column('message', sa.Text(), nullable=True))
-    op.add_column('notifications', sa.Column('payload_json', postgresql.JSONB(astext_type=sa.Text()), nullable=True))
+    op.add_column('notifications', sa.Column('payload_json', sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), 'postgresql'), nullable=True))
     op.add_column('notifications', sa.Column('failure_reason', sa.Text(), nullable=True))
     op.create_index(op.f('ix_notifications_trigger_event_id'), 'notifications', ['trigger_event_id'], unique=False)
     op.create_unique_constraint('uq_notifications_entry_trigger_type', 'notifications', ['queue_entry_id', 'trigger_event_id', 'notification_type'])

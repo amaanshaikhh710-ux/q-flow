@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"
     DEBUG: bool = True
     API_V1_PREFIX: str = "/api/v1"
-    DOCS_ENABLED: Optional[bool] = None
+    DOCS_ENABLED: Optional[bool] = True
 
     # CORS Configuration
     CORS_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173"]
@@ -29,6 +29,14 @@ class Settings(BaseSettings):
 
     # Database & Connection Pooling
     DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/qflow"
+
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def normalize_database_url(cls, v: str) -> str:
+        if isinstance(v, str) and v.startswith("postgres://"):
+            return v.replace("postgres://", "postgresql://", 1)
+        return v
+
     DB_POOL_SIZE: int = 10
     DB_MAX_OVERFLOW: int = 20
     DB_POOL_TIMEOUT: int = 30

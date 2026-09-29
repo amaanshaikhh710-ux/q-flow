@@ -23,6 +23,8 @@ from app.models.user import User, UserRole
 
 @pytest.fixture
 def db_session():
+    from app.core.database import Base, engine
+    Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
         yield db

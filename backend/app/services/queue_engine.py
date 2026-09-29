@@ -384,12 +384,12 @@ class QueueEngineService:
                 next_token = max_token + 1
                 now = datetime.now(timezone.utc)
 
-                # Patients joining today's active queue are WAITING
-                # Future bookings are BOOKED
+                # Walk-ins joining today's active queue are WAITING
+                # Advance phone/online bookings or scheduled times are BOOKED
                 initial_status = (
-                    QueueEntryStatus.WAITING
-                    if target_date == date.today()
-                    else QueueEntryStatus.BOOKED
+                    QueueEntryStatus.BOOKED
+                    if booking_source in ("PHONE", "ONLINE") or appointment_time is not None or target_date > date.today()
+                    else QueueEntryStatus.WAITING
                 )
                 arrived_at = now if initial_status == QueueEntryStatus.WAITING else None
 

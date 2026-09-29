@@ -9,7 +9,11 @@ Verifies:
 """
 
 import uuid
-from datetime import date, time, datetime, timezone
+from datetime import date, time, datetime, timezone, timedelta
+
+SCHEDULED_DATE = date.today().isoformat()
+SCHEDULED_DATE_NEXT = (date.today() + timedelta(days=1)).isoformat()
+UNSCHEDULED_DATE = (date.today() + timedelta(days=2)).isoformat()
 from decimal import Decimal
 import pytest
 from fastapi.testclient import TestClient
@@ -30,11 +34,20 @@ from app.core.security import create_access_token, hash_password
 
 @pytest.fixture
 def db_session():
+    from app.core.database import Base, engine, get_db
+    Base.metadata.create_all(bind=engine)
     db = SessionLocal()
+    def override_get_db():
+        try:
+            yield db
+        finally:
+            pass
+    app.dependency_overrides[get_db] = override_get_db
     try:
         yield db
     finally:
         db.close()
+        app.dependency_overrides.clear()
 
 
 @pytest.fixture
@@ -209,7 +222,7 @@ def test_acceptance_2_staff_cannot_schedule_doctor_from_other_hospital(client: T
         "hospital_id": str(setup_step1_data["hosp_b"].id),
         "doctor_id": str(setup_step1_data["doc_b"].id),
         "department_id": str(setup_step1_data["dept_b"].id),
-        "schedule_date": "2026-09-24",
+        "schedule_date": SCHEDULED_DATE,
         "start_time": "09:00:00",
         "end_time": "13:00:00",
         "status": "AVAILABLE",
@@ -222,7 +235,7 @@ def test_acceptance_2_staff_cannot_schedule_doctor_from_other_hospital(client: T
         "hospital_id": str(setup_step1_data["hosp_a"].id),
         "doctor_id": str(setup_step1_data["doc_b"].id),
         "department_id": str(setup_step1_data["dept_a"].id),
-        "schedule_date": "2026-09-24",
+        "schedule_date": SCHEDULED_DATE,
         "start_time": "09:00:00",
         "end_time": "13:00:00",
         "status": "AVAILABLE",
@@ -240,7 +253,7 @@ def test_acceptance_3_staff_schedules_doctor_in_db(client: TestClient, setup_ste
         "hospital_id": str(setup_step1_data["hosp_a"].id),
         "doctor_id": str(setup_step1_data["doc_a"].id),
         "department_id": str(setup_step1_data["dept_a"].id),
-        "schedule_date": "2026-09-24",
+        "schedule_date": SCHEDULED_DATE,
         "start_time": "09:00:00",
         "end_time": "13:00:00",
         "status": "AVAILABLE",
@@ -253,7 +266,7 @@ def test_acceptance_3_staff_schedules_doctor_in_db(client: TestClient, setup_ste
         db_session.query(DoctorSchedule)
         .filter(
             DoctorSchedule.doctor_id == setup_step1_data["doc_a"].id,
-            DoctorSchedule.schedule_date == date(2026, 9, 24),
+            DoctorSchedule.schedule_date == date.fromisoformat(SCHEDULED_DATE),
         )
         .first()
     )
@@ -273,7 +286,7 @@ def test_acceptance_4_patient_sees_scheduled_doctor_on_24_sept(client: TestClien
             "hospital_id": str(setup_step1_data["hosp_a"].id),
             "doctor_id": str(setup_step1_data["doc_a"].id),
             "department_id": str(setup_step1_data["dept_a"].id),
-            "schedule_date": "2026-09-24",
+            "schedule_date": SCHEDULED_DATE,
             "start_time": "09:00:00",
             "end_time": "13:00:00",
             "status": "AVAILABLE",
@@ -283,7 +296,7 @@ def test_acceptance_4_patient_sees_scheduled_doctor_on_24_sept(client: TestClien
     assert sched_res.status_code in (200, 201)
 
     hosp_id = str(setup_step1_data["hosp_a"].id)
-    res = client.get(f"/api/v1/schedules/available-doctors?hospital_id={hosp_id}&date=2026-09-24")
+    res = client.get(f"/api/v1/schedules/available-doctors?hospital_id={hosp_id}&date={SCHEDULED_DATE}")
     assert res.status_code == 200, res.text
     response_data = res.json()
     doctors = response_data.get("doctors", [])
@@ -299,7 +312,7 @@ def test_acceptance_5_patient_does_not_see_doctor_on_unscheduled_date(client: Te
     Result: Doctor A does not appear as available.
     """
     hosp_id = str(setup_step1_data["hosp_a"].id)
-    res = client.get(f"/api/v1/schedules/available-doctors?hospital_id={hosp_id}&date=2026-09-26")
+    res = client.get(f"/api/v1/schedules/available-doctors?hospital_id={hosp_id}&date={UNSCHEDULED_DATE}")
     assert res.status_code == 200, res.text
     response_data = res.json()
     doctors = response_data.get("doctors", [])
@@ -316,7 +329,7 @@ def test_acceptance_6_patient_booking_rejected_on_unscheduled_date(client: TestC
     queue_id = str(setup_step1_data["queue_a"].id)
 
     payload = {
-        "appointment_date": "2026-09-26",
+        "appointment_date": UNSCHEDULED_DATE,
         "appointment_time": "10:00:00",
     }
     res = client.post(f"/api/v1/queues/{queue_id}/join", json=payload, headers=headers)
@@ -336,7 +349,7 @@ def test_acceptance_7_patient_books_valid_scheduled_slot(client: TestClient, set
             "hospital_id": str(setup_step1_data["hosp_a"].id),
             "doctor_id": str(setup_step1_data["doc_a"].id),
             "department_id": str(setup_step1_data["dept_a"].id),
-            "schedule_date": "2026-09-24",
+            "schedule_date": SCHEDULED_DATE,
             "start_time": "09:00:00",
             "end_time": "13:00:00",
             "status": "AVAILABLE",
@@ -351,21 +364,21 @@ def test_acceptance_7_patient_books_valid_scheduled_slot(client: TestClient, set
     queue_id = str(setup_step1_data["queue_a"].id)
 
     payload = {
-        "appointment_date": "2026-09-24",
+        "appointment_date": SCHEDULED_DATE,
         "appointment_time": "10:30:00",
     }
     res = client.post(f"/api/v1/queues/{queue_id}/join", json=payload, headers=headers)
     assert res.status_code in (200, 201), res.text
     response_data = res.json()
     booking = response_data.get("entry", response_data)
-    assert booking["appointment_date"] == "2026-09-24"
+    assert booking["appointment_date"] == SCHEDULED_DATE
     assert booking["queue_id"] is not None
     assert booking["token_number"] is not None
 
     # Check DB record
     entry = db_session.query(QueueEntry).filter(QueueEntry.id == uuid.UUID(booking["id"])).first()
     assert entry is not None
-    assert str(entry.appointment_date) == "2026-09-24"
+    assert str(entry.appointment_date) == SCHEDULED_DATE
     assert entry.queue.opd_session.doctor_id == setup_step1_data["doc_a"].id
 
 
@@ -383,7 +396,7 @@ def test_acceptance_8_patient_availability_updates_on_date_switch(client: TestCl
             "hospital_id": str(setup_step1_data["hosp_a"].id),
             "doctor_id": str(setup_step1_data["doc_a"].id),
             "department_id": str(setup_step1_data["dept_a"].id),
-            "schedule_date": "2026-09-24",
+            "schedule_date": SCHEDULED_DATE,
             "start_time": "09:00:00",
             "end_time": "13:00:00",
             "status": "AVAILABLE",
@@ -398,7 +411,7 @@ def test_acceptance_8_patient_availability_updates_on_date_switch(client: TestCl
             "hospital_id": str(setup_step1_data["hosp_a"].id),
             "doctor_id": str(setup_step1_data["doc_a"].id),
             "department_id": str(setup_step1_data["dept_a"].id),
-            "schedule_date": "2026-09-25",
+            "schedule_date": SCHEDULED_DATE_NEXT,
             "start_time": "14:00:00",
             "end_time": "18:00:00",
             "status": "AVAILABLE",
@@ -410,13 +423,13 @@ def test_acceptance_8_patient_availability_updates_on_date_switch(client: TestCl
     hosp_id = str(setup_step1_data["hosp_a"].id)
 
     # 1. Check 24 Sept -> 09:00 - 13:00
-    res_24 = client.get(f"/api/v1/schedules/available-doctors?hospital_id={hosp_id}&date=2026-09-24")
+    res_24 = client.get(f"/api/v1/schedules/available-doctors?hospital_id={hosp_id}&date={SCHEDULED_DATE}")
     d24_list = res_24.json().get("doctors", [])
     d24 = next(d for d in d24_list if d["doctor_id"] == str(setup_step1_data["doc_a"].id))
     assert d24["start_time"] == "09:00:00"
 
     # 2. Check 25 Sept -> 14:00 - 18:00
-    res_25 = client.get(f"/api/v1/schedules/available-doctors?hospital_id={hosp_id}&date=2026-09-25")
+    res_25 = client.get(f"/api/v1/schedules/available-doctors?hospital_id={hosp_id}&date={SCHEDULED_DATE_NEXT}")
     d25_list = res_25.json().get("doctors", [])
     d25 = next(d for d in d25_list if d["doctor_id"] == str(setup_step1_data["doc_a"].id))
     assert d25["start_time"] == "14:00:00"
@@ -454,7 +467,7 @@ def test_acceptance_10_staff_can_book_on_behalf_of_patient(client: TestClient, s
             "hospital_id": str(setup_step1_data["hosp_a"].id),
             "doctor_id": str(setup_step1_data["doc_a"].id),
             "department_id": str(setup_step1_data["dept_a"].id),
-            "schedule_date": "2026-09-24",
+            "schedule_date": SCHEDULED_DATE,
             "start_time": "09:00:00",
             "end_time": "13:00:00",
             "status": "AVAILABLE",
@@ -472,7 +485,7 @@ def test_acceptance_10_staff_can_book_on_behalf_of_patient(client: TestClient, s
         "patient_phone": unique_phone,
         "priority_class": "priority",
         "notes": "Walk-in registered by OPD desk",
-        "appointment_date": "2026-09-24",
+        "appointment_date": SCHEDULED_DATE,
         "appointment_time": "11:15:00",
     }
     res = client.post(f"/api/v1/queues/{queue_id}/staff-book", json=staff_book_payload, headers=headers)
@@ -480,7 +493,7 @@ def test_acceptance_10_staff_can_book_on_behalf_of_patient(client: TestClient, s
     response_data = res.json()
     data = response_data.get("entry", response_data)
     assert data["token_number"] is not None
-    assert data["appointment_date"] == "2026-09-24"
+    assert data["appointment_date"] == SCHEDULED_DATE
 
     # Verify it entered the exact same queue system
     entry = db_session.query(QueueEntry).filter(QueueEntry.id == uuid.UUID(data["id"])).first()
@@ -499,7 +512,7 @@ def test_acceptance_11_patient_portal_flow_intact(client: TestClient, setup_step
             "hospital_id": str(setup_step1_data["hosp_a"].id),
             "doctor_id": str(setup_step1_data["doc_a"].id),
             "department_id": str(setup_step1_data["dept_a"].id),
-            "schedule_date": "2026-09-24",
+            "schedule_date": SCHEDULED_DATE,
             "start_time": "09:00:00",
             "end_time": "13:00:00",
             "status": "AVAILABLE",
@@ -513,7 +526,7 @@ def test_acceptance_11_patient_portal_flow_intact(client: TestClient, setup_step
     queue_id = str(setup_step1_data["queue_a"].id)
     client.post(
         f"/api/v1/queues/{queue_id}/join",
-        json={"appointment_date": "2026-09-24", "appointment_time": "12:00:00"},
+        json={"appointment_date": SCHEDULED_DATE, "appointment_time": "12:00:00"},
         headers=headers,
     )
 
@@ -541,7 +554,7 @@ def test_acceptance_12_backend_rejects_unauthorized_role_access(client: TestClie
     # 1. Staff attempts patient-only booking endpoint
     res = client.post(
         f"/api/v1/queues/{queue_id}/join",
-        json={"appointment_date": "2026-09-24"},
+        json={"appointment_date": SCHEDULED_DATE},
         headers={"Authorization": f"Bearer {staff_token}"},
     )
     assert res.status_code == 403, f"Staff must not call patient join: {res.status_code}"
@@ -557,7 +570,7 @@ def test_acceptance_12_backend_rejects_unauthorized_role_access(client: TestClie
             "hospital_id": str(setup_step1_data["hosp_a"].id),
             "doctor_id": str(setup_step1_data["doc_a"].id),
             "department_id": str(setup_step1_data["dept_a"].id),
-            "schedule_date": "2026-09-24",
+            "schedule_date": SCHEDULED_DATE,
             "start_time": "09:00:00",
             "end_time": "13:00:00",
         },

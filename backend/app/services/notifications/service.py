@@ -228,4 +228,56 @@ class NotificationService:
 
         return notification
 
+    def send_queue_event_notification(
+        self,
+        db: Session,
+        entry: QueueEntry,
+        title: str,
+        message: str,
+        notification_type: str = "QUEUE_UPDATE",
+        trigger_event_id: Optional[uuid.UUID] = None,
+        payload: Optional[dict] = None,
+    ) -> Notification:
+        """Send a direct queue event notification to a patient via configured provider and DB record."""
+        now = datetime.now(timezone.utc)
+        recipient = (entry.patient.phone if entry.patient else None) or (entry.patient.email if entry.patient else None) or "+919999999999"
+
+        notif = Notification(
+            user_id=entry.patient_user_id,
+            queue_entry_id=entry.id,
+            trigger_event_id=trigger_event_id,
+            channel="SMS",
+            notification_type=notification_type,
+            title=title,
+            message=message,
+            payload_json=payload or {},
+            status=NotificationStatus.PENDING.value if hasattr(NotificationStatus, "PENDING") else "pending",
+        )
+        db.add(notif)
+        db.flush()
+
+        # Dispatch via provider
+        if self.provider:
+            try:
+                self.provider.send(
+                    notification_id=notif.id,
+                    recipient=recipient,
+                    title=title,
+                    message=message,
+                    channel=notif.channel,
+                    payload=payload or {},
+                )
+                notif.status = NotificationStatus.SENT.value
+                notif.sent_at = now
+                notif.delivered_at = now
+            except Exception as e:
+                logger.warning("Provider failed to send queue notification: %s", e)
+                notif.status = NotificationStatus.FAILED.value
+                notif.failed_at = now
+                notif.failure_reason = str(e)
+
+        db.commit()
+        db.refresh(notif)
+        return notif
+
 
