@@ -11,6 +11,7 @@ from fastapi import HTTPException, status
 from app.models.queue import Queue, QueueStatus
 from app.models.queue_entry import QueueEntry, QueueEntryStatus, PriorityClass
 from app.models.queue_event import QueueEvent, QueueEventType
+from app.models.doctor import Doctor, DoctorStatus
 from app.models.doctor_availability import DoctorAvailability
 from app.models.doctor_schedule import DoctorSchedule
 from app.models.opd_session import OPDSession, SessionStatus
@@ -39,30 +40,50 @@ class QueueEngineService:
     def resolve_date_specific_queue(
         cls,
         db: Session,
-        queue_id: uuid.UUID,
+        queue_id: Optional[uuid.UUID],
         target_date: date,
+        doctor_id: Optional[uuid.UUID] = None,
+        hospital_id: Optional[uuid.UUID] = None,
+        department_id: Optional[uuid.UUID] = None,
     ) -> Queue:
         """Return the authoritative queue for a doctor/date, creating it if needed."""
-        if isinstance(queue_id, str):
-            queue_id = uuid.UUID(queue_id)
-        queue = db.query(Queue).filter(Queue.id == queue_id).with_for_update().first()
-        if not queue:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Queue with ID {queue_id} does not exist",
-            )
-
         if target_date.year < 2000 or target_date.year > 2100:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid target_date '{target_date}'. Year must be between 2000 and 2100.",
             )
 
-        if queue.queue_date == target_date:
-            return queue
+        queue = None
+        if queue_id:
+            if isinstance(queue_id, str):
+                try:
+                    queue_id = uuid.UUID(queue_id)
+                except ValueError:
+                    queue_id = None
+            if queue_id:
+                queue = db.query(Queue).filter(Queue.id == queue_id).with_for_update().first()
 
-        session = queue.opd_session
-        doctor_id = session.doctor_id if session else None
+        if queue:
+            if queue.queue_date == target_date:
+                return queue
+            if not doctor_id and queue.opd_session:
+                doctor_id = queue.opd_session.doctor_id
+        else:
+            # Check if queue_id was an OPDSession ID, DoctorSchedule ID, or Doctor ID
+            if queue_id:
+                sess = db.query(OPDSession).filter(OPDSession.id == queue_id).first()
+                if sess:
+                    doctor_id = doctor_id or sess.doctor_id
+                else:
+                    sched = db.query(DoctorSchedule).filter(DoctorSchedule.id == queue_id).first()
+                    if sched:
+                        doctor_id = doctor_id or sched.doctor_id
+                        target_date = target_date or sched.schedule_date
+                    else:
+                        doc = db.query(Doctor).filter(Doctor.id == queue_id).first()
+                        if doc:
+                            doctor_id = doctor_id or doc.id
+
         if doctor_id:
             resolved = (
                 db.query(Queue)
@@ -107,19 +128,36 @@ class QueueEngineService:
                     db.add(session_match)
                     db.flush()
 
-                new_queue = Queue(
-                    opd_session_id=session_match.id,
-                    name=f"Queue - {session_match.doctor.name if session_match.doctor else 'Doctor'}",
-                    queue_date=target_date,
-                    status=QueueStatus.ACTIVE,
-                )
-                db.add(new_queue)
+                new_queue = db.query(Queue).filter(Queue.opd_session_id == session_match.id).first()
+                if not new_queue:
+                    doc_obj = db.query(Doctor).filter(Doctor.id == doctor_id).first()
+                    doc_name = doc_obj.name if doc_obj else "Doctor"
+                    new_queue = Queue(
+                        opd_session_id=session_match.id,
+                        name=f"Queue - {doc_name}",
+                        queue_date=target_date,
+                        status=QueueStatus.ACTIVE,
+                    )
+                    db.add(new_queue)
+                    db.flush()
+                else:
+                    new_queue.queue_date = target_date
+                    if new_queue.status != QueueStatus.ACTIVE:
+                        new_queue.status = QueueStatus.ACTIVE
+                    db.flush()
+
+                schedule.opd_session_id = session_match.id
                 db.flush()
                 return new_queue
 
+        if queue:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Doctor has no scheduled clinic queue on {target_date.isoformat()} (this queue is for {queue.queue_date.isoformat()}). Booking rejected.",
+            )
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Doctor has no scheduled clinic queue on {target_date.isoformat()} (this queue is for {queue.queue_date.isoformat()}). Booking rejected.",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Queue with ID {queue_id} does not exist and no doctor clinic schedule found for {target_date.isoformat()}",
         )
 
     @classmethod
@@ -208,7 +246,7 @@ class QueueEngineService:
     def staff_book_appointment(
         cls,
         db: Session,
-        queue_id: uuid.UUID,
+        queue_id: Optional[uuid.UUID],
         staff_user_id: uuid.UUID,
         patient_name: str,
         patient_phone: Optional[str] = None,
@@ -217,6 +255,7 @@ class QueueEngineService:
         appointment_date: Optional[date] = None,
         appointment_time: Optional[dt_time] = None,
         notes: Optional[str] = None,
+        doctor_id: Optional[uuid.UUID] = None,
     ) -> QueueEntry:
         """Staff booking operation (walk-in, phone, or reception desk)."""
         target_date = appointment_date or date.today()
@@ -231,7 +270,7 @@ class QueueEngineService:
                 detail=f"Cannot book appointment for past date ({target_date.isoformat()})",
             )
 
-        queue = cls.resolve_date_specific_queue(db, queue_id, target_date)
+        queue = cls.resolve_date_specific_queue(db, queue_id, target_date, doctor_id=doctor_id)
 
         if queue.status != QueueStatus.ACTIVE:
             raise HTTPException(
@@ -448,11 +487,14 @@ class QueueEngineService:
     def join_queue(
         cls,
         db: Session,
-        queue_id: uuid.UUID,
+        queue_id: Optional[uuid.UUID],
         patient_user_id: uuid.UUID,
         priority_class: PriorityClass = PriorityClass.NORMAL,
         appointment_date: Optional[date] = None,
         appointment_time: Optional[dt_time] = None,
+        doctor_id: Optional[uuid.UUID] = None,
+        hospital_id: Optional[uuid.UUID] = None,
+        department_id: Optional[uuid.UUID] = None,
     ) -> QueueEntry:
         """Atomically join a patient into a queue with row-level locking."""
         target_date = appointment_date or date.today()
@@ -467,13 +509,44 @@ class QueueEngineService:
                 detail=f"Cannot book appointment for past date ({target_date.isoformat()})",
             )
 
-        queue = cls.resolve_date_specific_queue(db, queue_id, target_date)
+        queue = cls.resolve_date_specific_queue(
+            db=db,
+            queue_id=queue_id,
+            target_date=target_date,
+            doctor_id=doctor_id,
+            hospital_id=hospital_id,
+            department_id=department_id,
+        )
 
         if queue.status != QueueStatus.ACTIVE:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"Cannot join queue: Queue is currently {queue.status.value}",
             )
+
+        # Validate doctor status
+        if queue.opd_session and queue.opd_session.doctor:
+            if queue.opd_session.doctor.status == DoctorStatus.UNAVAILABLE:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Doctor {queue.opd_session.doctor.name} is currently unavailable",
+                )
+
+        # Validate hospital association if requested
+        if hospital_id and queue.opd_session and queue.opd_session.department:
+            if queue.opd_session.department.hospital_id != hospital_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Selected queue does not belong to the requested hospital",
+                )
+
+        # Validate department association if requested
+        if department_id and queue.opd_session:
+            if queue.opd_session.department_id != department_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Selected queue does not belong to the requested department",
+                )
 
         # Validate doctor schedule and availability on target_date
         if queue.opd_session and queue.opd_session.doctor_id:

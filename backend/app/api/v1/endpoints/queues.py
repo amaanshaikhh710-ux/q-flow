@@ -27,6 +27,7 @@ from app.schemas.queue import (
     QueueEntryResponse,
     QueueJoinRequest,
     QueueJoinResponse,
+    BookAppointmentRequest,
     CreateQueueRequest,
     StaffBookAppointmentRequest,
     EmergencyInsertRequest,
@@ -238,6 +239,48 @@ def list_staff_queues_for_date(
     return {"queue_date": queue_date.isoformat(), "queues": queues}
 
 
+@router.post("/book", response_model=QueueJoinResponse, status_code=status.HTTP_201_CREATED)
+def book_appointment(
+    payload: BookAppointmentRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_patient),
+) -> QueueJoinResponse:
+    """Patient operation: Book an appointment directly with a doctor on a specific date and time slot."""
+    entry = QueueEngineService.join_queue(
+        db=db,
+        queue_id=payload.queue_id,
+        patient_user_id=current_user.id,
+        appointment_date=payload.appointment_date,
+        appointment_time=payload.appointment_time,
+        doctor_id=payload.doctor_id,
+        hospital_id=payload.hospital_id,
+        department_id=payload.department_id,
+    )
+    try:
+        from app.services.reforecast_service import PredictionService
+        PredictionService().generate_initial_prediction(db, entry.id)
+    except Exception:
+        pass
+
+    try:
+        msg = {
+            "type": "QUEUE_ENTRY_ADDED",
+            "queue_id": str(entry.queue_id),
+            "entry_id": str(entry.id),
+            "token_number": entry.token_number,
+            "appointment_date": entry.appointment_date.isoformat(),
+        }
+        safe_run_async(connection_manager.broadcast_to_queue(entry.queue_id, msg))
+        hosp_id = get_queue_hospital_id(db, entry.queue_id)
+        if hosp_id:
+            safe_run_async(connection_manager.broadcast_to_hospital(hosp_id, msg))
+    except Exception:
+        pass
+
+    serialized = QueueEngineService.serialize_entry_response(db, entry)
+    return QueueJoinResponse(entry=serialized, message="Successfully booked appointment")
+
+
 @router.post("/{queue_id}/join", response_model=QueueJoinResponse, status_code=status.HTTP_201_CREATED)
 def join_queue(
     queue_id: uuid.UUID,
@@ -248,12 +291,19 @@ def join_queue(
     """Join the authenticated patient into the target active queue."""
     appointment_date = payload.appointment_date if payload else None
     appointment_time = payload.appointment_time if payload else None
+    doctor_id = payload.doctor_id if payload else None
+    hospital_id = payload.hospital_id if payload else None
+    department_id = payload.department_id if payload else None
+
     entry = QueueEngineService.join_queue(
         db=db,
         queue_id=queue_id,
         patient_user_id=current_user.id,
         appointment_date=appointment_date,
         appointment_time=appointment_time,
+        doctor_id=doctor_id,
+        hospital_id=hospital_id,
+        department_id=department_id,
     )
     try:
         from app.services.reforecast_service import PredictionService

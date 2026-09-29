@@ -96,13 +96,15 @@ export default function DoctorAvailabilityPage() {
   const bookMutation = useMutation({
     mutationFn: async () => {
       if (!selectedSchedule) throw new Error('Please select an available date');
-      if (!selectedSchedule.queue_id) {
-        throw new Error('No active queue configured for this scheduled date');
-      }
       return queuesApi.join(
-        selectedSchedule.queue_id,
+        selectedSchedule.queue_id || undefined,
         selectedSchedule.schedule_date,
-        selectedTime || undefined
+        selectedTime || undefined,
+        {
+          doctor_id: doctorId,
+          hospital_id: hospitalId || undefined,
+          department_id: departmentId || undefined,
+        }
       );
     },
     onSuccess: (resp) => {

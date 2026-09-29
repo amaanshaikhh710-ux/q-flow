@@ -124,12 +124,22 @@ export default function SimpleBookingPage() {
       queueId,
       appointmentDate,
       appointmentTime,
+      doctorId,
+      hospitalId,
+      departmentId,
     }: {
-      queueId: string;
+      queueId?: string;
       appointmentDate: string;
       appointmentTime?: string;
+      doctorId?: string;
+      hospitalId?: string;
+      departmentId?: string;
     }) => {
-      return queuesApi.join(queueId, appointmentDate, appointmentTime);
+      return queuesApi.join(queueId, appointmentDate, appointmentTime, {
+        doctor_id: doctorId,
+        hospital_id: hospitalId,
+        department_id: departmentId,
+      });
     },
     onSuccess: (data) => {
       setBookedEntry(data.entry);
@@ -141,8 +151,8 @@ export default function SimpleBookingPage() {
   });
 
   const handleConfirmBooking = () => {
-    if (!selectedDoctor?.queue_id) {
-      setBookingError('No active queue available for this doctor schedule.');
+    if (!selectedDoctor) {
+      setBookingError('Please select a doctor.');
       return;
     }
     if (!selectedDate) {
@@ -151,9 +161,12 @@ export default function SimpleBookingPage() {
     }
     setBookingError(null);
     joinMutation.mutate({
-      queueId: selectedDoctor.queue_id,
+      queueId: selectedDoctor.queue_id || undefined,
       appointmentDate: selectedDate,
       appointmentTime: selectedTime || undefined,
+      doctorId: selectedDoctor.doctor_id,
+      hospitalId: selectedHospital?.id,
+      departmentId: selectedDepartment?.id,
     });
   };
 

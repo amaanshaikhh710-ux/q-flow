@@ -330,50 +330,53 @@ def seed_demo_data(db: Session) -> Dict[str, int]:
                         db.flush()
                     counts["doctors"] += 1
 
-                    # Active OPD Session for today
-                    today_session_start = datetime.combine(today, dt_time(8, 0)).replace(tzinfo=timezone.utc)
-                    today_session_end = datetime.combine(today, dt_time(17, 0)).replace(tzinfo=timezone.utc)
-
-                    session = (
-                        db.query(OPDSession)
-                        .filter(
-                            OPDSession.doctor_id == doctor.id,
-                            OPDSession.starts_at >= datetime.combine(today, dt_time(0, 0)).replace(tzinfo=timezone.utc),
-                            OPDSession.starts_at <= datetime.combine(today, dt_time(23, 59, 59)).replace(tzinfo=timezone.utc),
-                        )
-                        .first()
-                    )
-                    if not session:
-                        session = OPDSession(
-                            department_id=dept.id,
-                            doctor_id=doctor.id,
-                            starts_at=today_session_start,
-                            ends_at=today_session_end,
-                            status=SessionStatus.ACTIVE,
-                        )
-                        db.add(session)
-                        db.flush()
-
-                    # Active Queue for today
-                    queue = db.query(Queue).filter(Queue.opd_session_id == session.id).first()
-                    if not queue:
-                        queue_name = f"{dept.name} - {doctor.name.replace('Dr. ', '')} OPD"
-                        queue = Queue(
-                            opd_session_id=session.id,
-                            name=queue_name,
-                            queue_date=today,
-                            status=QueueStatus.ACTIVE,
-                        )
-                        db.add(queue)
-                        db.flush()
-
-                    if hospital.name.startswith("King Edward") and dept.name == "General Medicine":
-                        kem_gen_med_queue = queue
-                        kem_gen_med_doctor = doctor
-
-                    # Persist DoctorSchedule for today + next 14 days
+                    # Persist DoctorSchedule, OPDSession, and Queue for today + next 14 days
                     for day_offset in range(15):
                         sched_date = today + timedelta(days=day_offset)
+                        day_session_start = datetime.combine(sched_date, dt_time(8, 0)).replace(tzinfo=timezone.utc)
+                        day_session_end = datetime.combine(sched_date, dt_time(17, 0)).replace(tzinfo=timezone.utc)
+
+                        day_session = (
+                            db.query(OPDSession)
+                            .filter(
+                                OPDSession.doctor_id == doctor.id,
+                                OPDSession.starts_at >= datetime.combine(sched_date, dt_time(0, 0)).replace(tzinfo=timezone.utc),
+                                OPDSession.starts_at <= datetime.combine(sched_date, dt_time(23, 59, 59)).replace(tzinfo=timezone.utc),
+                            )
+                            .first()
+                        )
+                        if not day_session:
+                            day_session = OPDSession(
+                                department_id=dept.id,
+                                doctor_id=doctor.id,
+                                starts_at=day_session_start,
+                                ends_at=day_session_end,
+                                status=SessionStatus.ACTIVE,
+                            )
+                            db.add(day_session)
+                            db.flush()
+
+                        day_queue = db.query(Queue).filter(Queue.opd_session_id == day_session.id).first()
+                        if not day_queue:
+                            queue_name = f"{dept.name} - {doctor.name.replace('Dr. ', '')} OPD"
+                            day_queue = Queue(
+                                opd_session_id=day_session.id,
+                                name=queue_name,
+                                queue_date=sched_date,
+                                status=QueueStatus.ACTIVE,
+                            )
+                            db.add(day_queue)
+                            db.flush()
+                        else:
+                            day_queue.queue_date = sched_date
+                            if day_queue.status != QueueStatus.ACTIVE:
+                                day_queue.status = QueueStatus.ACTIVE
+                            db.flush()
+
+                        if day_offset == 0 and hospital.name.startswith("King Edward") and dept.name == "General Medicine":
+                            kem_gen_med_queue = day_queue
+                            kem_gen_med_doctor = doctor
+
                         sched = (
                             db.query(DoctorSchedule)
                             .filter(
@@ -392,15 +395,15 @@ def seed_demo_data(db: Session) -> Dict[str, int]:
                                 end_time=dt_time(17, 0),
                                 status="AVAILABLE",
                                 created_by_staff_id=staff_user.id,
-                                opd_session_id=session.id if day_offset == 0 else None,
+                                opd_session_id=day_session.id,
                             )
                             db.add(sched)
                             counts["schedules"] += 1
                         else:
                             if sched.status != "AVAILABLE":
                                 sched.status = "AVAILABLE"
-                            if day_offset == 0 and not sched.opd_session_id:
-                                sched.opd_session_id = session.id
+                            sched.opd_session_id = day_session.id
+                            db.flush()
 
         # 4. Seed sample live entries in KEM General Medicine (if empty)
         if kem_gen_med_queue:

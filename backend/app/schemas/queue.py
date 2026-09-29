@@ -74,10 +74,28 @@ class QueueJoinRequest(BaseModel):
     """Patient payload to join a queue / book an appointment."""
     appointment_date: Optional[date] = Field(None, description="Target appointment date (defaults to today)")
     appointment_time: Optional[time] = Field(None, description="Optional target time window or slot")
+    doctor_id: Optional[uuid.UUID] = Field(None, description="Optional target doctor ID for resilient queue resolution")
+    hospital_id: Optional[uuid.UUID] = Field(None, description="Optional target hospital ID")
+    department_id: Optional[uuid.UUID] = Field(None, description="Optional target department ID")
 
     @field_validator("appointment_date", mode="after")
     @classmethod
     def validate_appointment_date(cls, v: Optional[date]) -> Optional[date]:
+        return validate_canonical_calendar_year(v)
+
+
+class BookAppointmentRequest(BaseModel):
+    """Patient payload to book an appointment directly with doctor schedule resolution."""
+    doctor_id: uuid.UUID = Field(..., description="Target doctor ID")
+    appointment_date: date = Field(..., description="Target appointment date")
+    appointment_time: Optional[time] = Field(None, description="Selected consultation time slot")
+    hospital_id: Optional[uuid.UUID] = Field(None, description="Optional target hospital ID")
+    department_id: Optional[uuid.UUID] = Field(None, description="Optional target department ID")
+    queue_id: Optional[uuid.UUID] = Field(None, description="Optional queue ID if known")
+
+    @field_validator("appointment_date", mode="after")
+    @classmethod
+    def validate_appointment_date(cls, v: date) -> date:
         return validate_canonical_calendar_year(v)
 
 

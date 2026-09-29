@@ -562,7 +562,7 @@ def get_doctor_schedule_availability(
                 status_str=sched.status,
             )
             sched.opd_session_id = session.id
-            db.flush()
+            db.commit()
 
         waiting_count = 0
         if queue:

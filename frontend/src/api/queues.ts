@@ -38,17 +38,42 @@ export const queuesApi = {
     return data as any;
   },
   join: async (
-    queueId: string,
+    queueId?: string | null,
     appointmentDate?: string,
-    appointmentTime?: string
+    appointmentTime?: string,
+    extra?: { doctor_id?: string; hospital_id?: string; department_id?: string }
   ): Promise<QueueJoinResponse> => {
-    const payload: { appointment_date?: string; appointment_time?: string } = {};
+    const payload: Record<string, any> = {};
     if (appointmentDate) payload.appointment_date = appointmentDate;
     if (appointmentTime) payload.appointment_time = appointmentTime;
-    const { data } = await apiClient.post<QueueJoinResponse>(
-      `/queues/${queueId}/join`,
-      Object.keys(payload).length > 0 ? payload : undefined
-    );
+    if (extra?.doctor_id) payload.doctor_id = extra.doctor_id;
+    if (extra?.hospital_id) payload.hospital_id = extra.hospital_id;
+    if (extra?.department_id) payload.department_id = extra.department_id;
+
+    if (queueId && queueId !== 'null' && queueId !== 'undefined') {
+      const { data } = await apiClient.post<QueueJoinResponse>(
+        `/queues/${queueId}/join`,
+        Object.keys(payload).length > 0 ? payload : undefined
+      );
+      return data;
+    } else {
+      const { data } = await apiClient.post<QueueJoinResponse>(
+        `/queues/book`,
+        payload
+      );
+      return data;
+    }
+  },
+
+  book: async (payload: {
+    doctor_id: string;
+    appointment_date: string;
+    appointment_time?: string;
+    hospital_id?: string;
+    department_id?: string;
+    queue_id?: string;
+  }): Promise<QueueJoinResponse> => {
+    const { data } = await apiClient.post<QueueJoinResponse>(`/queues/book`, payload);
     return data;
   },
 
